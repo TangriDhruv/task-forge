@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Open Sub-Account - {{ member.name }}{% endblock %}
+{% block content %}
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr><td><b>Open Sub-Account</b></td></tr>
+<tr><td>Member: {{ member.name }} ({{ member.member_id }})</td></tr>
+</table>
+<br>
+{% if error %}
+<table bgcolor="#ffe0e0" width="100%" cellpadding="6" cellspacing="0" border="1" bordercolor="#cc0000">
+<tr><td><font color="#990000"><b>VALIDATION ERROR:</b> {{ error }}</font></td></tr>
+</table>
+<br>
+{% endif %}
+<form method="post" action="{{ url_for('sub_account_new', member_id=member.member_id) }}{% if fault %}?fault={{ fault }}{% endif %}">
+{% if fault %}<input type="hidden" name="fault" value="{{ fault }}">{% endif %}
+<table cellpadding="4" cellspacing="0" border="0">
+<tr><td align="right">Account Type:</td><td>
+  <select name="account_type">
+    {% for t in ["Savings", "Money Market", "CD"] %}
+    <option value="{{ t }}" {% if values and values.account_type == t %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+</td></tr>
+<tr><td align="right">Initial Deposit:</td><td><input type="text" name="initial_deposit" size="15" value="{{ values.initial_deposit if values else '' }}"></td></tr>
+<tr><td align="right" valign="top">Justification:</td><td><textarea name="justification" rows="4" cols="40">{{ values.justification if values else '' }}</textarea></td></tr>
+<tr><td colspan="2">&nbsp;</td></tr>
+<tr><td></td><td><input type="submit" value="Open Sub-Account"></td></tr>
+</table>
+</form>
+<p><a href="{{ url_for('member_detail', member_id=member.member_id) }}">Cancel and return to Member Detail</a></p>
+{% endblock %}

@@ -1,0 +1,22 @@
+[project]
+name = "cua"
+version = "0.1.0"
+description = "interface.ai take-home: computer-use automation system"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+    "playwright>=1.47",
+    "anthropic>=0.40",
+    "python-dotenv>=1.0",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

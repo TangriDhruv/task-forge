@@ -1,0 +1,27 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+
+# Playwright / browser automation artifacts (keep curated evidence only)
+test-results/
+playwright-report/
+
+# Evidence: keep the folder and curated artifacts, ignore raw scratch dumps
+evidence/**/raw/
+
+# Runtime SQLite store (artifacts + event_library) -- keep the folder, not the DB file
+data/*.db

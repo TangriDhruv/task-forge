@@ -1,0 +1,64 @@
+<html>
+<head>
+<title>{% block title %}CU Servicing Console{% endblock %}</title>
+<style type="text/css">
+  body { font-family: Verdana, Arial, sans-serif; font-size: 12px; background-color: #d4d0c8; color: #000000; margin: 0; padding: 0; }
+  table { border-collapse: collapse; }
+  a { color: #0000ee; }
+  a:visited { color: #551a8b; }
+  td, th { font-size: 12px; }
+  input, select, textarea { font-family: Verdana, Arial, sans-serif; font-size: 12px; }
+</style>
+</head>
+<body bgcolor="#d4d0c8">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td bgcolor="#003366">
+      <table width="100%" cellpadding="6" cellspacing="0" border="0">
+        <tr>
+          <td><font color="#ffffff" size="4"><b>CU Servicing Console</b></font><br>
+              <font color="#cccccc" size="1">Member &amp; Account Servicing System v2.3</font></td>
+          <td align="right"><font color="#ffffff" size="2">
+            {% if session.get('username') %}
+              Logged in as: <b>{{ session.get('username') }}</b> &nbsp;|&nbsp; <a href="{{ url_for('logout') }}"><font color="#ffffff">Log Off</font></a>
+            {% else %}
+              Not logged in
+            {% endif %}
+          </font></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td bgcolor="#e8e4d8">
+      <table width="100%" cellpadding="4" cellspacing="0" border="0">
+        <tr>
+          <td>
+            <a href="{{ url_for('search') }}">Member Search</a> &nbsp;|&nbsp;
+            <a href="{{ url_for('admin_faults') }}">Admin: Fault Injection Console</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <table width="95%" cellpadding="10" cellspacing="0" border="0" align="center">
+        <tr>
+          <td bgcolor="#ffffff">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td>
+{% block content %}{% endblock %}
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><font size="1" color="#666666">Internal use only. Synthetic test data. No real member information is contained in this system.</font></td>
+  </tr>
+</table>
+</body>
+</html>

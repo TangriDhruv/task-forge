@@ -1,0 +1,65 @@
+{
+  "artifact_id": "cu-transfer-funds",
+  "artifact_version": 1,
+  "inputs": {
+    "member_id": "M-10001",
+    "from_account": "CHK-10001-01",
+    "to_account": "SAV-10001-02",
+    "amount": 25
+  },
+  "started_at": "2026-10-24T00:09:28.507035+00:00",
+  "steps": [
+    {
+      "step_id": "step_001",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_001.png"
+    },
+    {
+      "step_id": "step_002",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_002.png"
+    },
+    {
+      "step_id": "step_003",
+      "action_type": "select_option",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_003.png"
+    },
+    {
+      "step_id": "step_004",
+      "action_type": "select_option",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_004.png"
+    },
+    {
+      "step_id": "step_005",
+      "action_type": "type_text",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_005.png"
+    },
+    {
+      "step_id": "step_006",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_006.png"
+    },
+    {
+      "step_id": "step_007",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_007.png"
+    }
+  ],
+  "result": {
+    "status": "success",
+    "outputs": {
+      "transfer_id": "XFR-123520",
+      "from_account": "CHK-10001-01",
+      "to_account": "SAV-10001-02",
+      "amount": 25.0,
+      "status": "Completed"
+    }
+  }
+}

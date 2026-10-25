@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ heading or "Access Denied" }}{% endblock %}
+{% block content %}
+<table bgcolor="#fff4d6" width="100%" cellpadding="8" cellspacing="0" border="1" bordercolor="#cc9900">
+<tr><td><font color="#996600"><b>{{ heading or "ACCESS DENIED" }}:</b> {{ message }}</font></td></tr>
+</table>
+{% if request_link %}
+<p><a href="{{ request_link }}">{{ request_link_label or "Request Access" }}</a></p>
+{% endif %}
+<p><a href="{{ back_link }}">Back to Member Detail</a></p>
+{% endblock %}

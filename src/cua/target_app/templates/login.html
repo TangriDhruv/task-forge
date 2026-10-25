@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Log In - CU Servicing Console{% endblock %}
+{% block content %}
+<table cellpadding="4" cellspacing="0" border="0">
+<tr><td colspan="2"><b>Please log in to continue.</b></td></tr>
+{% if expired %}
+<tr><td colspan="2"><table bgcolor="#ffe0e0" width="100%" cellpadding="6" cellspacing="0" border="1">
+<tr><td><font color="#990000"><b>SESSION TIMEOUT:</b> Your session expired due to inactivity. Please log in again to continue.</font></td></tr>
+</table></td></tr>
+{% endif %}
+{% if error %}
+<tr><td colspan="2"><font color="#cc0000"><b>{{ error }}</b></font></td></tr>
+{% endif %}
+<tr><td colspan="2">&nbsp;</td></tr>
+<form method="post" action="{{ url_for('login') }}">
+<tr><td align="right">Username:</td><td><input type="text" name="username" size="24"></td></tr>
+<tr><td align="right">Password:</td><td><input type="password" name="password" size="24"></td></tr>
+<tr><td colspan="2">&nbsp;</td></tr>
+<tr><td></td><td><input type="submit" value="Log In"></td></tr>
+</form>
+</table>
+<p><font size="1" color="#666666">This is a mock console. Any non-blank username/password is accepted -- there is no real authentication.</font></p>
+{% endblock %}

@@ -1,0 +1,61 @@
+{
+  "artifact_id": "cu-transfer-funds",
+  "artifact_version": 1,
+  "inputs": {
+    "member_id": "M-10003",
+    "from_account": "CHK-10003-01",
+    "to_account": "SAV-10003-02",
+    "amount": 500
+  },
+  "started_at": "2026-10-24T00:09:57.429015+00:00",
+  "steps": [
+    {
+      "step_id": "step_001",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_001.png"
+    },
+    {
+      "step_id": "step_002",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_002.png"
+    },
+    {
+      "step_id": "step_003",
+      "action_type": "select_option",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_003.png"
+    },
+    {
+      "step_id": "step_004",
+      "action_type": "select_option",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_004.png"
+    },
+    {
+      "step_id": "step_005",
+      "action_type": "type_text",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_005.png"
+    },
+    {
+      "step_id": "step_006",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_006.png"
+    },
+    {
+      "step_id": "step_007",
+      "action_type": "click",
+      "tier_used": 0,
+      "screenshot": "screenshots/step_007.png"
+    }
+  ],
+  "result": {
+    "status": "business_outcome",
+    "outcome_name": "insufficient_funds",
+    "outcome_class": "business",
+    "source": "artifact"
+  }
+}

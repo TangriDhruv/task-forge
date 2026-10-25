@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<table bgcolor="#e6ffe6" width="100%" cellpadding="8" cellspacing="0" border="1" bordercolor="#339933">
+<tr><td><font color="#226622"><b>{{ banner }}</b> Reference ID: <b>{{ ticket.ticket_id }}</b></font></td></tr>
+</table>
+<br>
+<table width="60%" cellpadding="4" cellspacing="0" border="1" bordercolor="#999999">
+{% for label, value in rows %}
+<tr bgcolor="{{ '#f2f2f2' if loop.index0 % 2 == 0 else '#ffffff' }}"><td width="35%"><b>{{ label }}</b></td><td>{{ value }}</td></tr>
+{% endfor %}
+</table>
+<p>
+{% if member_id %}<a href="{{ url_for('member_detail', member_id=member_id) }}">Back to Member Detail</a> &nbsp;|&nbsp;{% endif %}
+<a href="{{ url_for('search') }}">Back to Member Search</a>
+</p>
+{% endblock %}

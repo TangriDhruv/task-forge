@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Transfer Funds - {{ member.name }}{% endblock %}
+{% block content %}
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr><td><b>Transfer Funds</b></td></tr>
+<tr><td>Member: {{ member.name }} ({{ member.member_id }})</td></tr>
+</table>
+<br>
+{% if error %}
+<table bgcolor="#ffe0e0" width="100%" cellpadding="6" cellspacing="0" border="1" bordercolor="#cc0000">
+<tr><td><font color="#990000"><b>{{ error }}</b></font></td></tr>
+</table>
+<br>
+{% endif %}
+<form method="post" action="{{ url_for('transfer_funds', member_id=member.member_id) }}{% if fault %}?fault={{ fault }}{% endif %}" name="transferForm" onsubmit="return interfaceAiConfirmTransfer();">
+{% if fault %}<input type="hidden" name="fault" value="{{ fault }}">{% endif %}
+<table cellpadding="4" cellspacing="0" border="0">
+<tr><td align="right">From Account:</td><td>
+  <select name="from_account">
+    {% for account in member.accounts %}
+    <option value="{{ account.account_id }}" {% if values and values.from_account == account.account_id %}selected{% endif %}>{{ account.account_id }} ({{ account.account_type }}, ${{ "%.2f"|format(account.balance) }})</option>
+    {% endfor %}
+  </select>
+</td></tr>
+<tr><td align="right">To Account:</td><td>
+  <select name="to_account">
+    {% for account in member.accounts %}
+    <option value="{{ account.account_id }}" {% if values and values.to_account == account.account_id %}selected{% endif %}>{{ account.account_id }} ({{ account.account_type }}, ${{ "%.2f"|format(account.balance) }})</option>
+    {% endfor %}
+  </select>
+</td></tr>
+<tr><td align="right">Amount:</td><td><input type="text" name="amount" size="15" value="{{ values.amount if values else '' }}"></td></tr>
+<tr><td align="right">Confirm:</td><td>
+  <input type="checkbox" name="confirmed" value="yes" {% if values and values.confirmed %}checked{% endif %}>
+  I confirm the account numbers and amount above are correct.
+</td></tr>
+<tr><td colspan="2">&nbsp;</td></tr>
+<tr><td></td><td><input type="submit" value="Submit Transfer"></td></tr>
+</table>
+</form>
+<script type="text/javascript">
+function interfaceAiConfirmTransfer() {
+  var forceConfirm = {{ 'true' if fault == 'confirm_dialog' else 'false' }};
+  if (forceConfirm) {
+    return confirm('This transfer will move funds between the accounts shown. Continue?');
+  }
+  return true;
+}
+</script>
+<p><a href="{{ url_for('member_detail', member_id=member.member_id) }}">Cancel and return to Member Detail</a></p>
+{% endblock %}

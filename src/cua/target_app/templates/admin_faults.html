@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Admin: Fault Injection Console{% endblock %}
+{% block content %}
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr><td><b>Fault Injection Console</b></td></tr>
+<tr><td>Global/session-level toggles for deterministic error-path testing. These apply on top of
+the per-request <tt>?fault=</tt> query parameter, which is documented below.</td></tr>
+</table>
+{% if saved %}
+<table bgcolor="#e6ffe6" width="100%" cellpadding="6" cellspacing="0" border="1" bordercolor="#339933">
+<tr><td><font color="#226622">Configuration updated.</font></td></tr>
+</table>
+{% endif %}
+<br>
+<form method="post" action="{{ url_for('admin_faults') }}">
+<table cellpadding="4" cellspacing="0" border="1" bordercolor="#999999" width="70%">
+<tr bgcolor="#cccccc"><td colspan="2"><b>Setting</b></td></tr>
+<tr><td width="45%">Session TTL (seconds)</td><td><input type="text" name="session_ttl_seconds" value="{{ config.session_ttl_seconds }}" size="8"></td></tr>
+<tr><td>Slow-mode probability (0.0 - 1.0, applied to all requests)</td><td><input type="text" name="slow_mode_probability" value="{{ config.slow_mode_probability }}" size="8"></td></tr>
+<tr><td>Slow-mode delay (seconds)</td><td><input type="text" name="slow_mode_delay_seconds" value="{{ config.slow_mode_delay_seconds }}" size="8"></td></tr>
+<tr><td>Force permission denied on all account actions</td><td><input type="checkbox" name="force_permission_denied" value="yes" {% if config.force_permission_denied %}checked{% endif %}></td></tr>
+<tr><td>Force validation error on all account actions</td><td><input type="checkbox" name="force_validation_error" value="yes" {% if config.force_validation_error %}checked{% endif %}></td></tr>
+</table>
+<br>
+<input type="submit" name="action" value="Save Settings">
+<input type="submit" name="action" value="Reset to Defaults">
+</form>
+<br>
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr><td><b>Per-request fault codes</b> (append to any URL, e.g. <tt>/member/M-10001?fault=slow</tt>):</td></tr>
+</table>
+<table width="90%" cellpadding="4" cellspacing="0" border="1" bordercolor="#999999">
+<tr bgcolor="#cccccc"><td><b>Code</b></td><td><b>Effect</b></td></tr>
+<tr><td>not_found</td><td>Forces a "record not found" outcome on member lookups.</td></tr>
+<tr><td>validation_error</td><td>Forces the sub-account or transfer form to fail validation on submit.</td></tr>
+<tr><td>permission_denied</td><td>Forces an access-denied outcome on a sub-account or transfer submission.</td></tr>
+<tr><td>confirm_dialog</td><td>Forces the native JS confirm() interstitial on the transfer form submit button.</td></tr>
+<tr><td>session_timeout</td><td>Forces the current request to be treated as having an expired session.</td></tr>
+<tr><td>slow</td><td>Adds an artificial delay before responding.</td></tr>
+<tr><td>server_error</td><td>Forces an unhandled HTTP 500 response.</td></tr>
+</table>
+<p><font size="1" color="#666666">Example: <tt>/member/M-10001?fault=slow</tt> or <tt>/member/M-10001/transfer?fault=confirm_dialog</tt>.</font></p>
+{% endblock %}

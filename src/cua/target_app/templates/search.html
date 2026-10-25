@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Member Search{% endblock %}
+{% block content %}
+<table cellpadding="4" cellspacing="0" border="0" width="100%">
+<tr><td><b>Member Search</b></td></tr>
+<tr><td>Search by member ID or name. Leave blank to browse the full member directory.</td></tr>
+<tr><td>
+<form method="get" action="{{ url_for('search') }}">
+<input type="text" name="member_query" size="30" value="{{ query or '' }}">
+<input type="submit" value="Search">
+</form>
+</td></tr>
+</table>
+<br>
+<table width="100%" cellpadding="5" cellspacing="0" border="1" bordercolor="#999999">
+<tr bgcolor="#cccccc">
+  <td><b>Member ID</b></td>
+  <td><b>Name</b></td>
+  <td><b>Status</b></td>
+  <td><b>Branch</b></td>
+</tr>
+{% if results %}
+  {% for m in results %}
+  <tr bgcolor="{{ '#ffffff' if loop.index0 % 2 == 0 else '#f2f2f2' }}">
+    <td><a href="{{ url_for('member_detail', member_id=m.member_id) }}">{{ m.member_id }}</a></td>
+    <td>{{ m.name }}</td>
+    <td>{{ m.status }}</td>
+    <td>{{ m.branch }}</td>
+  </tr>
+  {% endfor %}
+{% else %}
+  <tr><td colspan="4"><font color="#cc0000"><b>No members matched your search criteria{% if query %} for "{{ query }}"{% endif %}.</b></font></td></tr>
+{% endif %}
+</table>
+{% endblock %}

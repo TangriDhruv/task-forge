@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Record Not Found{% endblock %}
+{% block content %}
+<table bgcolor="#ffe0e0" width="100%" cellpadding="8" cellspacing="0" border="1" bordercolor="#cc0000">
+<tr><td><font color="#990000"><b>ERROR:</b> {{ message }}</font></td></tr>
+</table>
+<p><a href="{{ url_for('search') }}">Return to Member Search</a></p>
+{% endblock %}

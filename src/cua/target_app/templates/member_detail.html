@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ member.name }} - Member Detail{% endblock %}
+{% block content %}
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr><td colspan="2"><b>{{ member.name }}</b> ({{ member.member_id }})</td></tr>
+</table>
+<table width="60%" cellpadding="4" cellspacing="0" border="1" bordercolor="#999999">
+<tr bgcolor="#f2f2f2"><td width="35%"><b>Member ID</b></td><td>{{ member.member_id }}</td></tr>
+<tr><td><b>Name</b></td><td>{{ member.name }}</td></tr>
+<tr bgcolor="#f2f2f2"><td><b>Status</b></td><td>{{ member.status }}</td></tr>
+<tr><td><b>Member Since</b></td><td>{{ member.member_since }}</td></tr>
+<tr bgcolor="#f2f2f2"><td><b>Branch</b></td><td>{{ member.branch }}</td></tr>
+</table>
+<br>
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr><td><b>Accounts</b></td></tr>
+</table>
+<table width="100%" cellpadding="5" cellspacing="0" border="1" bordercolor="#999999">
+<tr bgcolor="#cccccc">
+  <td><b>Account ID</b></td>
+  <td><b>Type</b></td>
+  <td><b>Balance</b></td>
+  <td><b>Status</b></td>
+</tr>
+{% for account in member.accounts %}
+<tr bgcolor="{{ '#ffffff' if loop.index0 % 2 == 0 else '#f2f2f2' }}">
+  <td>{{ account.account_id }}</td>
+  <td>{{ account.account_type }}</td>
+  <td>${{ "%.2f"|format(account.balance) }}</td>
+  <td>{{ account.status }}</td>
+</tr>
+{% else %}
+<tr><td colspan="4"><font color="#666666">No accounts on file for this member.</font></td></tr>
+{% endfor %}
+</table>
+{% if member.status != "Closed" %}
+<p>
+<a href="{{ url_for('sub_account_new', member_id=member.member_id) }}">Open Sub-Account</a>
+&nbsp;|&nbsp;
+<a href="{{ url_for('transfer_funds', member_id=member.member_id) }}">Transfer Funds</a>
+</p>
+{% endif %}
+<p><a href="{{ url_for('search') }}">Back to Member Search</a></p>
+{% endblock %}
