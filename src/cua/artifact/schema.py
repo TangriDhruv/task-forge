@@ -23,10 +23,11 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
 
-ActionType = Literal["click", "type_text", "select_option", "wait_for"]
+ActionType = Literal["click", "type_text", "select_option", "wait_for", "repeat_for_each"]
 ConditionKind = Literal["url_matches", "text_contains", "element_present", "element_absent"]
 OutcomeClass = Literal["business", "recoverable", "hard_failure"]
 LocatorBy = Literal["id", "name", "href", "role_text", "css_nth"]
+ItemLocatorBy = Literal["css", "role_text_contains"]
 ParamType = Literal["string", "number", "boolean"]
 ExtractionKind = Literal["label_value", "regex"]
 
@@ -105,6 +106,42 @@ def resolve_locator_chain(
     raise LocatorResolutionError(
         f"no locator in the chain resolved to exactly one element: {'; '.join(attempts)}"
     )
+
+
+@dataclass(frozen=True)
+class ItemLocator:
+    """Matches a *set* of repeated elements -- unlike ``LocatorSpec``, which
+    must resolve to exactly one. Used only by a ``repeat_for_each`` Step, to
+    find however many items exist *right now* (a document row, a search
+    result), re-evaluated fresh every replay rather than counted once
+    during discovery and baked in. This is the concrete mechanism behind
+    "download all the compliance documents, reliably, however many there
+    are today" -- a `repeat_for_each` step's count is never fixed by the
+    recording.
+
+    - css: a CSS selector matched against *every* element it finds (e.g.
+      ``"table.documents a[href$='.pdf']"``), not just the first.
+    - role_text_contains: every element of ``tag`` whose visible text
+      contains ``value`` as a substring (e.g. every ``<a>`` containing
+      "Download") -- for pages with no stable CSS hook, only a repeated
+      visual pattern, mirroring how ``LocatorSpec``'s ``role_text`` tier
+      works for a single element.
+    """
+
+    by: ItemLocatorBy
+    value: str
+    tag: str | None = None
+
+    def describe(self) -> str:
+        return f"{self.by}:{self.value}"
+
+    def to_playwright(self, page: "Page") -> "Locator":
+        if self.by == "css":
+            return page.locator(self.value)
+        if self.by == "role_text_contains":
+            tag = self.tag or "*"
+            return page.locator(f"xpath=//{tag}[contains(normalize-space(.), {_xpath_literal(self.value)})]")
+        raise ValueError(f"unknown item locator strategy: {self.by}")
 
 
 @dataclass(frozen=True)
@@ -202,6 +239,18 @@ class Step:
     input_binding: str | None = None
     text_literal: str | None = None
     select_value: str | None = None
+    # -- only meaningful when action_type == "repeat_for_each"; locator_chain
+    # above is unused in that case (pass an empty tuple) --
+    # The item-matching pattern: however many elements it matches at replay
+    # time, each one gets clicked -- never a fixed count baked in.
+    item_locator: ItemLocator | None = None
+    # Wrap each item's click in Playwright's download-capture API and save
+    # the resulting file (see cua.replay.executor) -- the common shape of
+    # "download every X" rather than every click navigating somewhere.
+    expect_download: bool = False
+    # A safety bound, not a correctness one: guards against a runaway page
+    # (e.g. infinite scroll) rather than being how "all of them" is defined.
+    max_iterations: int | None = None
 
 
 @dataclass(frozen=True)
@@ -253,8 +302,12 @@ class Artifact:
                 for l in chain
             )
 
+        def _item_locator(il: dict) -> ItemLocator:
+            return ItemLocator(by=il["by"], value=il["value"], tag=il.get("tag"))
+
         def _step(s: dict) -> Step:
             post_condition = s.get("post_condition")
+            item_locator = s.get("item_locator")
             return Step(
                 step_id=s["step_id"],
                 action_type=s["action_type"],
@@ -263,6 +316,9 @@ class Artifact:
                 input_binding=s.get("input_binding"),
                 text_literal=s.get("text_literal"),
                 select_value=s.get("select_value"),
+                item_locator=_item_locator(item_locator) if item_locator else None,
+                expect_download=s.get("expect_download", False),
+                max_iterations=s.get("max_iterations"),
             )
 
         def _outcome_rule(o: dict) -> OutcomeRule:

@@ -154,3 +154,76 @@ def test_non_success_trace_raises():
     trace.status = "stuck"
     with pytest.raises(RecorderError):
         _record(trace=trace)
+
+
+# -- repeat_for_each detection (download-all-documents pattern) --------------
+
+
+def _download_all_trace() -> RunTrace:
+    """Three sibling document-download clicks, all decided while looking
+    at the SAME trust-center list page -- the genuine "click each item in
+    this list" shape, as opposed to a drill-down (see the test below)."""
+    trace = RunTrace(goal="download all compliance documents", base_url="http://example.com")
+    trace.status = "success"
+    same_page_obs = {"url": "http://example.com/trust-center"}
+    trace.steps = [
+        StepRecord(
+            step=1, observation=same_page_obs, tool_name="click", tool_input={"ref": 3},
+            locator_chain=[
+                {"by": "href", "value": "/trust-center/documents/soc2.pdf", "tag": None, "nth": 0},
+                {"by": "css_nth", "value": "a", "tag": "a", "nth": 3},
+            ],
+        ),
+        StepRecord(
+            step=2, observation=same_page_obs, tool_name="click", tool_input={"ref": 4},
+            locator_chain=[
+                {"by": "href", "value": "/trust-center/documents/iso27001.pdf", "tag": None, "nth": 0},
+                {"by": "css_nth", "value": "a", "tag": "a", "nth": 4},
+            ],
+        ),
+        StepRecord(
+            step=3, observation=same_page_obs, tool_name="click", tool_input={"ref": 5},
+            locator_chain=[
+                {"by": "href", "value": "/trust-center/documents/pentest.pdf", "tag": None, "nth": 0},
+                {"by": "css_nth", "value": "a", "tag": "a", "nth": 5},
+            ],
+        ),
+        StepRecord(
+            step=4, observation={"url": "http://example.com/trust-center", "visible_text": "3 documents downloaded"},
+            tool_name="finish_success", tool_input={"summary": "done", "outputs": {}}, locator_chain=None,
+        ),
+    ]
+    return trace
+
+
+def test_repeated_sibling_clicks_collapse_into_one_repeat_for_each_step():
+    artifact = record_artifact(
+        trace=_download_all_trace(),
+        artifact_id="download-all-docs",
+        name="Download all compliance documents",
+        goal_description="Download every compliance document from the trust center.",
+        app_id="generic",
+        base_url_pattern="http://example.com",
+        inputs=[],
+        outputs=[],
+        bindings={},
+        checkpoint=Condition(kind="text_contains", value="documents downloaded"),
+    )
+    assert len(artifact.steps) == 1
+    step = artifact.steps[0]
+    assert step.action_type == "repeat_for_each"
+    assert step.expect_download is True
+    assert step.item_locator.by == "css"
+    assert step.item_locator.value == 'a[href^="/trust-center/documents/"][href$=".pdf"]'
+
+
+def test_drill_down_navigation_across_different_pages_is_never_collapsed():
+    """Regression test: the original _detect_repeat_runs would wrongly
+    collapse step_001 (click into /member/M-10001) and step_002 (click
+    into /member/M-10001/transfer) because their hrefs share a long
+    prefix -- but these are a drill-down across two different pages, not
+    siblings in a list, and must never be merged."""
+    artifact = _record()
+    assert artifact.steps[0].action_type == "click"
+    assert artifact.steps[1].action_type == "click"
+    assert not any(s.action_type == "repeat_for_each" for s in artifact.steps)

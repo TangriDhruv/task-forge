@@ -28,10 +28,18 @@ from __future__ import annotations
 
 from cua.agent.trace import RunTrace, StepRecord
 
-from .schema import Artifact, Condition, InputParam, LocatorSpec, OutcomeRule, OutputField
+from .schema import Artifact, Condition, InputParam, ItemLocator, LocatorSpec, OutcomeRule, OutputField
 
 # Steps that never correspond to a replayable browser action.
 _NON_REPLAYABLE_TOOLS = {"finish_success", "finish_stuck", "request_human_help"}
+
+# A run of fewer consecutive, structurally-similar clicks is more likely to
+# be two unrelated single clicks that happen to be adjacent than an actual
+# repeated list -- see _detect_repeat_runs.
+_MIN_REPEAT_RUN = 2
+# A shared prefix+suffix shorter than this (e.g. just "/") is too generic to
+# trust as "these are the same kind of item," not a real structural signal.
+_MIN_SHARED_PATTERN_LEN = 4
 
 
 class RecorderError(RuntimeError):
@@ -68,19 +76,122 @@ def _find_binding(value: str, bindings: dict[str, str]) -> str | None:
     return None
 
 
+def _href_tier(sr: StepRecord) -> dict | None:
+    """The href-based locator tier for a click step, if it has one -- the
+    signal a repeated download/list pattern is detected from, since a
+    repeated item's identity usually lives in its link target, not its
+    visible text (which legacy table rows often repeat verbatim)."""
+    if sr.tool_name != "click" or not sr.locator_chain:
+        return None
+    for l in sr.locator_chain:
+        if l["by"] == "href":
+            return l
+    return None
+
+
+def _common_prefix(strings: list[str]) -> str:
+    if not strings:
+        return ""
+    shortest = min(strings, key=len)
+    for i, ch in enumerate(shortest):
+        if any(s[i] != ch for s in strings):
+            return shortest[:i]
+    return shortest
+
+
+def _common_suffix(strings: list[str]) -> str:
+    return _common_prefix([s[::-1] for s in strings])[::-1]
+
+
+def _detect_repeat_runs(steps: list[StepRecord]) -> list[tuple[int, int, str, str]]:
+    """Find runs of consecutive click steps whose hrefs share a real
+    common shape (e.g. every document link under the same path, or every
+    file ending in the same extension) -- the recorded fingerprint of
+    "click each item in this list," which should replay as one
+    ``repeat_for_each`` over however many items exist, not N steps locked
+    to this run's exact count. Returns (start, end_exclusive, prefix,
+    suffix) tuples into ``steps``; non-overlapping, in order.
+
+    Sharing an href prefix is necessary but not sufficient: a drill-down
+    navigation (open a member, then open their transfer page) can share
+    just as long a prefix as true siblings in a list, and is exactly the
+    wrong thing to collapse. The deciding signal is that every step in a
+    real repeated-list pattern was decided while looking at the *same*
+    page (``observation["url"]`` unchanged) -- true siblings never
+    navigate between clicks (each click triggers a download, not a page
+    change); a drill-down always does.
+    """
+    runs: list[tuple[int, int, str, str]] = []
+    i, n = 0, len(steps)
+    while i < n:
+        if _href_tier(steps[i]) is None:
+            i += 1
+            continue
+        page_url = steps[i].observation.get("url")
+        j = i + 1
+        while (
+            j < n
+            and _href_tier(steps[j]) is not None
+            and steps[j].observation.get("url") == page_url
+        ):
+            j += 1
+        if j - i >= _MIN_REPEAT_RUN:
+            hrefs = [_href_tier(s)["value"] for s in steps[i:j]]
+            prefix, suffix = _common_prefix(hrefs), _common_suffix(hrefs)
+            if len(prefix) + len(suffix) >= _MIN_SHARED_PATTERN_LEN:
+                runs.append((i, j, prefix, suffix))
+                i = j
+                continue
+        i += 1
+    return runs
+
+
 def _build_steps(trace: RunTrace, bindings: dict[str, str]) -> list:
     from .schema import Step
 
-    steps: list[Step] = []
-    for sr in trace.steps:
-        if sr.tool_name in _NON_REPLAYABLE_TOOLS or sr.tool_name.startswith("human_"):
-            continue
+    replayable = [
+        sr for sr in trace.steps
+        if sr.tool_name not in _NON_REPLAYABLE_TOOLS and not sr.tool_name.startswith("human_")
+    ]
+    for sr in replayable:
         if sr.locator_chain is None:
             raise RecorderError(
                 f"step {sr.step} ({sr.tool_name}) has no captured locator_chain -- this trace "
                 "predates StepRecord.locator_chain (see trace.py) and can't be mechanically "
                 "recorded; re-run discovery to get a trace with a real chain per step."
             )
+
+    runs_by_start = {start: (end, prefix, suffix) for start, end, prefix, suffix in _detect_repeat_runs(replayable)}
+
+    steps: list[Step] = []
+    idx = 0
+    while idx < len(replayable):
+        if idx in runs_by_start:
+            end, prefix, suffix = runs_by_start[idx]
+            css_value = "a"
+            masked_prefix, masked_suffix = _mask(prefix, bindings), _mask(suffix, bindings)
+            if masked_prefix:
+                css_value += f'[href^="{masked_prefix}"]'
+            if masked_suffix:
+                css_value += f'[href$="{masked_suffix}"]'
+            steps.append(
+                Step(
+                    step_id=f"step_{replayable[idx].step:03d}_repeat",
+                    action_type="repeat_for_each",
+                    locator_chain=(),
+                    item_locator=ItemLocator(by="css", value=css_value),
+                    # Defaults to True: the detected pattern is "N consecutive
+                    # same-shaped link clicks," which in practice is almost
+                    # always a download list -- a human reviewing this
+                    # artifact should flip it if that's not actually the
+                    # case here, per the schema's reviewed:bool gate.
+                    expect_download=True,
+                )
+            )
+            idx = end
+            continue
+
+        sr = replayable[idx]
         chain = tuple(_mask_locator(l, bindings) for l in sr.locator_chain)
         step_id = f"step_{sr.step:03d}"
 
@@ -107,6 +218,7 @@ def _build_steps(trace: RunTrace, bindings: dict[str, str]) -> list:
                 select_value=select_value,
             )
         )
+        idx += 1
     return steps
 
 

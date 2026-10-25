@@ -20,6 +20,12 @@ take over the live session → evidence for both runs.** Every core requirement 
 `docs/assignment.md` §3 must be touched, even if thin — do not polish one piece while leaving
 another as a TODO.
 
+**Beyond the take-home.** The submission itself (pushed to `github.com/TangriDhruv/task-forge`)
+is the state described above, against the CU servicing console. Work since then grows the same
+codebase toward a general browser-automation tool — any site, not just the CU app — without
+touching what was already submitted. New capability is additive (e.g. `repeat_for_each`, below)
+rather than a rewrite; the CU app and its artifact stay as the reference example.
+
 ## Locked decisions
 
 - **Language/runtime:** Python.
@@ -135,13 +141,53 @@ another as a TODO.
   - Native JS `confirm()` dialogs (one of the target app's injected faults) are auto-accepted and
     logged, mirroring what a human operator would do, per the "recoverable conditions" language in
     §3.3.
+- **`repeat_for_each`: a loop construct in the artifact schema, not just a fixed linear step
+  list.** Implemented (`cua.artifact.schema.ItemLocator` + `Step.action_type ==
+  "repeat_for_each"`, executed in `cua.replay.executor._perform_repeat_for_each`). A plain
+  recorded step list would hardcode "click doc A, click doc B, click doc C" for exactly the N
+  items that existed during discovery — correct today, silently wrong the moment a 4th item
+  exists. `ItemLocator` instead matches however many elements exist *at replay time* and
+  performs the same action on each, re-evaluated fresh every run. This is the concrete answer to
+  "download all the compliance documents, reliably, the same way every time, however many there
+  are" — the task that motivated adding it. Scope, stated rather than silently assumed: v1
+  requires each item's action not navigate the page away (a download, captured via Playwright's
+  `expect_download`, or an in-place action) — iterating item *i+1* depends on the original list
+  still being on screen. A click that navigates to a per-item detail page (visit, extract, go
+  back) is a natural extension, not built.
+- **The recorder detects a repeated-item pattern automatically, but only on a real structural
+  signal — same page, shared href shape — never on href-prefix similarity alone.**
+  Implemented (`cua.artifact.recorder._detect_repeat_runs`). A drill-down (open a member, then
+  open their transfer page) can share just as long an href prefix as true list siblings, and
+  collapsing it would be actively wrong — caught live while building this: a test fixture's two
+  sequential drill-down clicks were initially mis-detected as a repeat run. The fix: every step
+  in a real repeated-list pattern was decided while looking at the *same* page
+  (`observation["url"]` unchanged between clicks) — true siblings never navigate between clicks;
+  a drill-down always does. Regression-tested in `tests/test_recorder.py` (both the positive
+  case and this exact false-positive).
+- **Known gap, not yet fixed: login is still a mandatory bootstrap step with a fixed form
+  shape** (`input[name=username]`/`input[name=password]`/submit) in both `run_discovery` and
+  `replay()`. Fine for the CU app; wrong for a real public trust-center page that needs no login
+  at all. `tests/fixtures/doc_list_app.py` (the generic validation fixture for `repeat_for_each`)
+  was given a trivial matching login route specifically to sidestep this rather than fix it —
+  next concrete step if continuing toward arbitrary sites is making login optional/pluggable.
 
 ## Open decisions
 
-None outstanding — every `src/cua/*` subpackage is implemented (see below) and the full thread
-(goal → discovery → recorded artifact → deterministic replay, happy path and two business
-outcomes) has been run live against the real target app, not just unit-tested. Remaining work is
-depth, not open design decisions; see `REPORT.md` §7 (Cuts) for what's intentionally thin.
+For the take-home submission itself: none outstanding — every `src/cua/*` subpackage was
+implemented and the full thread (goal → discovery → recorded artifact → deterministic replay,
+happy path and two business outcomes) ran live against the real target app before pushing to
+`task-forge`. See `REPORT.md` §7 (Cuts) for what was intentionally thin in that submission.
+
+For the generalization work since: two concrete open items, not yet resolved —
+1. **Login as optional/pluggable**, not a mandatory fixed-shape bootstrap step (see the
+   "known gap" note above) — needed before pointing this at a real public site with no login.
+2. **Task decomposition into sub-goals**, each potentially its own discovery run — e.g.
+   "download all compliance docs" = sub-goal 1 "find the trust-center page" (a normal discovery
+   run) → sub-goal 2 "enumerate and download every document on it" (a `repeat_for_each`
+   capability). Not designed yet; the `repeat_for_each` primitive above was the prerequisite for
+   this to make sense at all, and is now in place.
+
+The list below is historical — decisions already made and implemented, kept for reference.
 
 - **Locator chains are real ranked fallbacks, computed and resolved identically everywhere.**
   `cua.agent.browser._compute_locator_chains` builds every applicable tier per element (`id` →

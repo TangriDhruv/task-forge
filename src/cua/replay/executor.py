@@ -44,6 +44,11 @@ from cua.artifact.schema import (
     condition_holds,
     resolve_locator_chain,
 )
+
+# Playwright's own timeout error, not ours -- raised by Page.expect_download()
+# when a repeat_for_each item's click doesn't trigger a download within the
+# wait window. Caught alongside ActionError in the main loop.
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from cua.artifact.store import match_event
 from cua.safety.allowlist import AllowlistPolicy, AllowlistViolation
 
@@ -231,6 +236,7 @@ def replay(
 
     browser.start()
     drift: list[dict] = []
+    repeat_results: dict[str, list[str]] = {}
     try:
         browser.login(artifact.base_url_pattern, username, password)
 
@@ -242,6 +248,33 @@ def replay(
                 return _finish_outcome(replay_trace, trace_path, _save_trace, outcome, drift)
             if outcome and outcome["outcome_class"] == "recoverable":
                 _attempt_recovery(browser, artifact, username, password)
+
+            if step.action_type == "repeat_for_each":
+                try:
+                    saved_files = _perform_repeat_for_each(browser, step, output_dir)
+                except (ActionError, PlaywrightTimeoutError) as exc:
+                    outcome = _check_outcomes(artifact, browser, resolved_inputs)
+                    if outcome:
+                        return _finish_outcome(replay_trace, trace_path, _save_trace, outcome, drift)
+                    return _finish_failure(
+                        replay_trace, trace_path, _save_trace, step,
+                        expected=f"repeat_for_each over {step.item_locator.describe()} to succeed",
+                        observed=str(exc), drift=drift,
+                    )
+                repeat_results[step.step_id] = saved_files
+                tier = 0
+                replay_trace["steps"].append(
+                    {
+                        "step_id": step.step_id, "action_type": step.action_type,
+                        "items_processed": len(saved_files), "files": saved_files,
+                        "screenshot": _screenshot(i),
+                    }
+                )
+                _save_trace()
+                outcome = _check_outcomes(artifact, browser, resolved_inputs)
+                if outcome and outcome["outcome_class"] != "recoverable":
+                    return _finish_outcome(replay_trace, trace_path, _save_trace, outcome, drift)
+                continue
 
             chain = _resolved_chain(step.locator_chain, resolved_inputs)
             try:
@@ -304,6 +337,14 @@ def replay(
             )
 
         outputs = _extract_outputs(artifact, browser)
+        # Every repeat_for_each step automatically contributes two output
+        # keys -- "{step_id}_count" and "{step_id}_files" -- rather than
+        # needing special-case OutputField config: "how many did we get"
+        # and "which ones" are always the shape that matters for this step
+        # type, so there's nothing a reviewer needs to configure per artifact.
+        for step_id, files in repeat_results.items():
+            outputs[f"{step_id}_count"] = len(files)
+            outputs[f"{step_id}_files"] = files
         replay_trace["result"] = {"status": "success", "outputs": outputs}
         _save_trace()
         return ReplayResult(
@@ -329,6 +370,47 @@ def _perform_action(browser: BrowserSession, locator, step: Step, inputs: dict[s
     else:
         raise ActionError(f"unknown step action_type: {step.action_type}")
     browser.policy.check_url(browser.page.url)
+
+
+def _perform_repeat_for_each(browser: BrowserSession, step: Step, output_dir: str | None) -> list[str]:
+    """Resolve ``step.item_locator`` to however many elements match *right
+    now* -- never a count fixed at discovery time -- and click each one.
+    This is the mechanism behind "download all of them, reliably, however
+    many exist today": a page that gains a 4th document next month is
+    handled correctly on the very next replay, with no re-recording.
+
+    v1 scope, stated rather than silently assumed: each item's click must
+    not navigate the page away (a download, or an in-place action) --
+    iterating further items depends on the original list still being on
+    screen. A click that navigates to a per-item detail page is a natural
+    extension (visit, extract, go back) but isn't built; see REPORT.md."""
+    browser.policy.check_action_type("click")
+    locator = step.item_locator.to_playwright(browser.page)
+    count = locator.count()
+    if step.max_iterations is not None:
+        count = min(count, step.max_iterations)
+    if count == 0:
+        raise ActionError(f"repeat_for_each item_locator {step.item_locator.describe()} matched 0 elements")
+
+    downloads_dir = os.path.join(output_dir, "downloads") if output_dir else None
+    saved_files: list[str] = []
+    for i in range(count):
+        item = locator.nth(i)
+        if step.expect_download:
+            with browser.page.expect_download(timeout=10000) as download_info:
+                item.click(timeout=5000)
+            download = download_info.value
+            if downloads_dir:
+                os.makedirs(downloads_dir, exist_ok=True)
+                dest = os.path.join(downloads_dir, download.suggested_filename)
+                download.save_as(dest)
+                saved_files.append(os.path.join("downloads", download.suggested_filename))
+            else:
+                saved_files.append(download.suggested_filename)
+        else:
+            item.click(timeout=5000)
+    browser.policy.check_url(browser.page.url)
+    return saved_files
 
 
 def _attempt_recovery(browser: BrowserSession, artifact: Artifact, username: str, password: str) -> None:
