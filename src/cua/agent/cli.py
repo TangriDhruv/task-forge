@@ -17,21 +17,39 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
-from cua.agent.loop import DEFAULT_MAX_STEPS, run_discovery
+from cua.agent.loop import DEFAULT_MAX_STEPS, run_discovery, run_task
 
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Run the LLM-driven discovery agent against the target app.")
+    parser = argparse.ArgumentParser(description="Run the LLM-driven discovery agent on a goal.")
     parser.add_argument("--goal", required=True, help="Natural-language goal for the agent to accomplish.")
-    parser.add_argument("--target", required=True, help="Base URL of the target app, e.g. http://127.0.0.1:5055")
+    parser.add_argument(
+        "--target",
+        default=None,
+        help=(
+            "Base URL of the target app, e.g. http://127.0.0.1:5055. Omit to auto-route the "
+            "goal instead (cua.agent.router) -- known local targets still resolve directly; "
+            "anything else is found via web search."
+        ),
+    )
     parser.add_argument(
         "--start-path",
         default="/search",
-        help="Path to start the goal-specific flow from, after login. Default: /search",
+        help="Path to start the goal-specific flow from, after login (--target mode only). Default: /search",
     )
-    parser.add_argument("--username", default=os.environ.get("TARGET_APP_USERNAME", "demo"))
-    parser.add_argument("--password", default=os.environ.get("TARGET_APP_PASSWORD", "demo"))
+    parser.add_argument("--username", default=None)
+    parser.add_argument("--password", default=None)
+    parser.add_argument(
+        "--no-login",
+        action="store_true",
+        help=(
+            "Skip the login bootstrap step entirely -- for a real public site that needs no "
+            "login (and almost certainly has no form matching our fixed username/password "
+            "shape anyway). Without this, --target mode falls back to demo/demo, which is "
+            "right for the mock apps but wrong for anything else."
+        ),
+    )
     parser.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS)
     parser.add_argument("--headed", action="store_true", help="Show the browser window instead of running headless.")
     parser.add_argument(
@@ -52,17 +70,41 @@ def main(argv: list[str] | None = None) -> int:
     trace_path = os.path.join(output_dir, "trace.json")
     print(f"Writing live trace + screenshots to: {output_dir}")
 
-    result = run_discovery(
-        goal=args.goal,
-        base_url=args.target.rstrip("/"),
-        start_path=args.start_path,
-        username=args.username,
-        password=args.password,
-        max_steps=args.max_steps,
-        headless=not args.headed,
-        output_dir=output_dir,
-        interactive=False,
-    )
+    if args.target:
+        if args.no_login:
+            username = password = None
+        else:
+            username = args.username or os.environ.get("TARGET_APP_USERNAME", "demo")
+            password = args.password or os.environ.get("TARGET_APP_PASSWORD", "demo")
+        result = run_discovery(
+            goal=args.goal,
+            base_url=args.target.rstrip("/"),
+            start_path=args.start_path,
+            username=username,
+            password=password,
+            max_steps=args.max_steps,
+            headless=not args.headed,
+            output_dir=output_dir,
+            interactive=False,
+        )
+    else:
+        known_targets = {
+            "member/account/banking tasks on the CU Servicing Console (mock)": os.environ.get(
+                "TARGET_APP_BASE_URL", "http://127.0.0.1:5055"
+            )
+        }
+        result = run_task(
+            goal=args.goal,
+            known_targets=known_targets,
+            username=args.username,
+            password=args.password,
+            max_steps=args.max_steps,
+            headless=not args.headed,
+            output_dir=output_dir,
+            interactive=False,
+        )
+        if result.trace.routing:
+            print(f"Routed to: {result.trace.routing['url']} ({result.trace.routing['reasoning']})")
 
     print(f"Status: {result.status}")
     if result.summary:

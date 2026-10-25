@@ -207,10 +207,20 @@ class BrowserSession:
         self.policy.check_url(url)
         self.page.goto(url, wait_until="load")
 
-    def login(self, base_url: str, username: str, password: str) -> None:
+    def login(self, base_url: str, username: str | None, password: str | None) -> None:
         # Deliberately not LLM-driven: authentication is session setup, not
         # part of the goal-specific capability being discovered. See
         # REPORT.md §1.
+        #
+        # Optional: a known internal app assumes an already-authenticated
+        # session and needs this fixed-shape bootstrap; a real public site
+        # (e.g. a vendor's trust-center page) typically needs no login at
+        # all, and almost certainly doesn't match this exact form shape
+        # even if it has one. username=None (or password=None) skips this
+        # entirely rather than forcing every target to look like our own
+        # mock apps' login page.
+        if username is None or password is None:
+            return
         self.goto(f"{base_url}/login")
         self.page.fill("input[name='username']", username)
         self.page.fill("input[name='password']", password)

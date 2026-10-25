@@ -12,7 +12,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+import pytest
+
 import cua.agent.llm as llm
+import cua.agent.usage as usage_module
+
+
+@pytest.fixture(autouse=True)
+def _isolated_usage_ledger(tmp_path, monkeypatch):
+    # Every Decider call records usage -- redirect it so these fake-response
+    # tests never write into the real data/usage.jsonl ledger.
+    monkeypatch.setattr(usage_module, "DEFAULT_USAGE_LOG", tmp_path / "usage.jsonl")
 
 
 @dataclass
@@ -29,12 +39,19 @@ class _FakeBlock:
         return {"type": self.type, "text": self.text}
 
 
+def _fake_usage():
+    return SimpleNamespace(
+        input_tokens=10, output_tokens=5, cache_creation_input_tokens=0,
+        cache_read_input_tokens=0, server_tool_use=None,
+    )
+
+
 class _FakeMessages:
     def __init__(self, content_blocks):
         self._content_blocks = content_blocks
 
     def create(self, **kwargs):
-        return SimpleNamespace(content=self._content_blocks)
+        return SimpleNamespace(content=self._content_blocks, model="fake-model", usage=_fake_usage())
 
 
 def _decider_with_fake_response(content_blocks) -> llm.Decider:

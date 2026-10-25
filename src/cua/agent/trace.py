@@ -50,6 +50,16 @@ class RunTrace:
     status: str = "running"
     stuck_reason: str | None = None
     steps: list[StepRecord] = field(default_factory=list)
+    # Set only for a run_task() invocation that resolved its own target via
+    # cua.agent.router -- {"url", "reasoning", "source"}. Routing is fully
+    # autonomous (no human pause before committing), so this is what makes
+    # the choice auditable after the fact rather than invisible.
+    routing: dict | None = None
+    # Every Claude API call this run made (discovery + routing, if any),
+    # refreshed after every step -- see cua.agent.usage. Also written,
+    # independently, to the cumulative data/usage.jsonl ledger as each call
+    # happens, so this is a per-run *view* of that ledger, not the only copy.
+    usage: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)

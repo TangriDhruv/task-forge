@@ -25,3 +25,6 @@ evidence/**/raw/
 
 # Runtime SQLite store (artifacts + event_library) -- keep the folder, not the DB file
 data/*.db
+
+# Cumulative token-usage/cost ledger -- personal spend data, not repo content
+data/usage.jsonl

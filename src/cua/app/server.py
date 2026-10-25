@@ -17,6 +17,8 @@ import glob
 import json
 import os
 import threading
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -64,7 +66,7 @@ def _result_dict(result: RunResult | None) -> dict | None:
     return {"status": result.status, "outputs": result.outputs, "summary": result.summary}
 
 
-def start_run(goal: str, target: str, start_path: str, username: str, password: str) -> str:
+def start_run(goal: str, target: str, start_path: str, username: str | None, password: str | None) -> str:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:6]
     output_dir = os.path.join(EVIDENCE_ROOT, f"discovery-run-{run_id}")
     os.makedirs(output_dir, exist_ok=True)
@@ -115,10 +117,16 @@ def create_app() -> Flask:
         goal = (request.form.get("goal") or "").strip()
         target = (request.form.get("target") or DEFAULT_TARGET).strip()
         start_path = (request.form.get("start_path") or "/search").strip()
-        username = (request.form.get("username") or DEFAULT_USERNAME).strip()
-        password = (request.form.get("password") or DEFAULT_PASSWORD).strip()
+        if request.form.get("no_login") == "yes":
+            username = password = None
+        else:
+            username = (request.form.get("username") or DEFAULT_USERNAME).strip()
+            password = (request.form.get("password") or DEFAULT_PASSWORD).strip()
         if not goal:
             return "Goal is required", 400
+        unreachable = _check_target_reachable(target)
+        if unreachable:
+            return unreachable, 400
         run_id = start_run(goal, target, start_path, username, password)
         return Response(status=302, headers={"Location": f"/runs/{run_id}"})
 
@@ -234,6 +242,23 @@ def create_app() -> Flask:
     return app
 
 
+def _check_target_reachable(target: str) -> str | None:
+    """Returns an error message if nothing is listening at ``target``, or
+    None if it's reachable. Deliberately doesn't require a ``/healthz``
+    route (that would break pointing this at an arbitrary real site) --
+    any HTTP response at all, even a 404, proves a server is actually
+    there. Catching this before starting the background thread turns "no
+    screenshot, repeated 404s on /screenshot, confusing" into an instant,
+    clear error on the form submission itself."""
+    try:
+        urllib.request.urlopen(target, timeout=3)
+    except urllib.error.HTTPError:
+        pass  # a real HTTP response, even an error one -- the server is up
+    except Exception as exc:  # noqa: BLE001 -- connection refused, DNS failure, timeout, etc.
+        return f"Could not reach {target} ({exc}). Is the target app running, and is the URL correct?"
+    return None
+
+
 def _status_of(run: RunState) -> str:
     if run.error:
         return "error"
@@ -281,6 +306,10 @@ INDEX_PAGE = """<!doctype html>
     <input name="username" value="{username}">
     <label>Password</label>
     <input name="password" type="password" placeholder="demo">
+    <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
+      <input type="checkbox" name="no_login" value="yes" style="width:auto;">
+      No login needed (a real public site, not one of the mock apps)
+    </label>
     <button type="submit">Run discovery</button>
   </form>
   <h3>Recent runs</h3>

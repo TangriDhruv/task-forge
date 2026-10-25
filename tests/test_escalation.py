@@ -119,11 +119,64 @@ def test_timeout_with_no_human_returns_no_actions():
     assert bridge.control == "agent"
 
 
+def test_screenshot_requires_human_control():
+    # Only serviceable while the owning thread is actually in its drain
+    # loop (see bridge.py's module docstring on Playwright thread
+    # affinity) -- the dashboard's file-based fallback covers "not
+    # paused," this bridge method must not pretend to otherwise.
+    bridge = EscalationBridge(_FakePage())
+    with pytest.raises(PermissionError):
+        bridge.screenshot_bytes()
+
+
 def test_screenshot_uses_viewport_not_full_page():
     page = _FakePage()
     bridge = EscalationBridge(page)
+
+    def discovery_thread():
+        bridge.request_human(EscalationRequest(kind="other", reason="x", step=1), timeout=2)
+
+    t = threading.Thread(target=discovery_thread)
+    t.start()
+    time.sleep(0.05)
     bridge.screenshot_bytes()
+    bridge.resume()
+    t.join(timeout=2)
     assert page._shot_calls == [False]
+
+
+def test_commands_from_a_different_thread_are_serviced_by_the_owning_thread():
+    """The actual bug this design fixes: Playwright's sync API requires
+    every call happen on the thread that created the browser session.
+    relay_click/relay_type/relay_key/screenshot_bytes must never touch
+    self._page directly from the calling (Flask) thread -- they enqueue a
+    command and the owning thread's request_human loop is what executes
+    it. Exercised here by actually calling from a second, separate
+    thread, not just the same thread as the test body."""
+    page = _FakePage()
+    bridge = EscalationBridge(page)
+    results = {}
+
+    def discovery_thread():
+        bridge.request_human(EscalationRequest(kind="other", reason="x", step=1), timeout=3)
+
+    def relay_thread():
+        time.sleep(0.1)
+        results["shot"] = bridge.screenshot_bytes()
+        bridge.relay_click(10, 20)
+        bridge.relay_key("Escape")
+
+    t1 = threading.Thread(target=discovery_thread)
+    t2 = threading.Thread(target=relay_thread)
+    t1.start()
+    t2.start()
+    t2.join(timeout=3)
+    bridge.resume()
+    t1.join(timeout=3)
+
+    assert results["shot"] == b"fake-png-bytes"
+    assert page.mouse.clicks == [(10, 20)]
+    assert page.keyboard.pressed == ["Escape"]
 
 
 # ---- credentials ------------------------------------------------------------

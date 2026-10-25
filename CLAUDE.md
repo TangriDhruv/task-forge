@@ -178,14 +178,55 @@ implemented and the full thread (goal → discovery → recorded artifact → de
 happy path and two business outcomes) ran live against the real target app before pushing to
 `task-forge`. See `REPORT.md` §7 (Cuts) for what was intentionally thin in that submission.
 
-For the generalization work since: two concrete open items, not yet resolved —
-1. **Login as optional/pluggable**, not a mandatory fixed-shape bootstrap step (see the
-   "known gap" note above) — needed before pointing this at a real public site with no login.
-2. **Task decomposition into sub-goals**, each potentially its own discovery run — e.g.
-   "download all compliance docs" = sub-goal 1 "find the trust-center page" (a normal discovery
-   run) → sub-goal 2 "enumerate and download every document on it" (a `repeat_for_each`
-   capability). Not designed yet; the `repeat_for_each` primitive above was the prerequisite for
-   this to make sense at all, and is now in place.
+For the generalization work since, resolved this round:
+
+- **Login is now optional**, not a mandatory fixed-shape bootstrap step. `BrowserSession.login`
+  skips entirely when `username`/`password` are `None`; the CLI's `--no-login` flag and the
+  dashboard's "No login needed" checkbox both wire this through explicitly rather than silently
+  falling back to `demo`/`demo` (which was the actual bug blocking the first real attempt at a
+  public site — `run_discovery`'s unconditional login call tried to fill a password field that
+  doesn't exist on `trust.openai.com` and timed out).
+- **Goal-only routing (`cua.agent.router.route_target` + `cua.agent.loop.run_task`) is built
+  and verified live against a real external site**, not just the mock target app. Given a goal
+  with no `--target`, it resolves which site to use via Anthropic's own server-side `web_search`
+  tool (no third-party search API) before any browser or allowlist exists, then `run_task` locks
+  the allowlist to that origin exactly as if a human had typed it into `--target`. Two real bugs
+  were caught and fixed while building this (both regression-tested in `tests/test_router.py`):
+  an unverified URL the model merely *recalled* from training data was being accepted as if
+  confirmed — fixed by rejecting recall-only navigation and forcing an actual `web_search` call
+  first; and rejecting that recall with plain text instead of a proper `tool_result` broke the
+  *next* API call outright (the same "dangling `tool_use`" bug class already fixed once in
+  `cua.agent.llm`, independently reintroduced in router.py's own hand-built message history).
+- **The escalation bridge had a serious, previously-undetected bug: Playwright's sync API is
+  not thread-safe, and `relay_click`/`relay_type`/`relay_key`/`screenshot_bytes` were calling
+  it directly from Flask's request threads.** Fixed (`cua.escalation.bridge`) by routing every
+  such call through a command queue that only the browser-owning thread drains, inside
+  `request_human`'s wait loop. This had never been caught because the unit/integration tests
+  used a fake `Page` with no thread-affinity constraint at all — a real gap between "verified"
+  and "verified against a real browser," discovered only when a genuine escalation pause against
+  `trust.openai.com` hit a real `greenlet.error: Cannot switch to a different thread`. A fake-page
+  test now explicitly submits commands from a second thread to catch a regression of this class.
+- **Per-API-call token usage and cost logging** (`cua.agent.usage`). Every `Decider`/
+  `route_target` call is appended to a cumulative ledger (`data/usage.jsonl`, gitignored —
+  personal spend data) immediately after the response returns, since the charge already
+  happened regardless of what the run does next (crash, `max_steps`, anything). Pricing is a
+  small, dated lookup table (`PRICING_PER_MTOK`, as of 2026-10-06), not a live fetch —
+  appropriate simplicity for personal cost tracking, not a billing-grade integration,
+  and an unrecognized model costs `$0` rather than guessing. `scripts/usage_report.py` prints
+  the aggregate (`cua.agent.usage.summarize`). One field is unverified against a real response
+  (credits ran out before it could be spot-checked): `response.usage.server_tool_use
+  .web_search_requests` — read defensively via `getattr` with a `0` fallback; confirm the exact
+  attribute name next time a live run actually uses `web_search`.
+
+One concrete open item remains:
+- **Task decomposition into sub-goals**, each potentially its own discovery run — e.g.
+  "download all compliance docs" = sub-goal 1 "find the trust-center page" (a normal discovery
+  run, now including auto-routing) → sub-goal 2 "enumerate and download every document on it" (a
+  `repeat_for_each` capability). Not designed yet, though both prerequisites it depends on
+  (routing, `repeat_for_each`) are now in place. Partially attempted live against
+  `trust.openai.com`'s real "Bulk download" button — blocked by running out of API credits
+  mid-test, not by a code issue; next step is simply retrying that specific goal once credits
+  are topped up.
 
 The list below is historical — decisions already made and implemented, kept for reference.
 

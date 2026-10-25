@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 from anthropic import Anthropic
 
+from cua.agent import usage
+
 DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
 TOOLS = [
@@ -177,6 +179,11 @@ class Decider:
         self._goal = goal
         self._max_tokens = max_tokens
         self.messages: list[dict] = []
+        # Every API call this Decider makes, for cost/usage analysis (see
+        # cua.agent.usage) -- also written to the cumulative ledger
+        # immediately on each call, so a crashed/killed run doesn't lose
+        # the record of a charge that already happened.
+        self.usage_log: list[usage.UsageRecord] = []
 
     def _call_model(self) -> Decision:
         response = self._client.messages.create(
@@ -187,6 +194,7 @@ class Decider:
             tool_choice={"type": "any"},
             messages=self.messages,
         )
+        self.usage_log.append(usage.record_usage(response, call_site="discovery"))
         content = list(response.content)
         tool_use_index = next((i for i, b in enumerate(content) if b.type == "tool_use"), None)
         if tool_use_index is None:

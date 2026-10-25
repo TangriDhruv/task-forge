@@ -18,11 +18,13 @@ doubles as richer per-step evidence (§3.5), not only a signal on failure.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Callable
+from urllib.parse import urlparse
 
 from cua.agent.browser import ActionError, BrowserSession, Observation
 from cua.agent.llm import Decider
+from cua.agent.router import route_target
 from cua.agent.trace import RunTrace, StepRecord
 from cua.escalation import credentials
 from cua.escalation.bridge import EscalationBridge, EscalationRequest
@@ -48,8 +50,8 @@ def run_discovery(
     goal: str,
     base_url: str,
     start_path: str,
-    username: str,
-    password: str,
+    username: str | None,
+    password: str | None,
     max_steps: int = DEFAULT_MAX_STEPS,
     headless: bool = True,
     output_dir: str | None = None,
@@ -88,6 +90,10 @@ def run_discovery(
                 locator_chain=locator_chain,
             )
         )
+        # Refreshed on every step (not just at the end) so trace.json always
+        # reflects usage/cost so far, even if the run is later killed before
+        # any return statement runs -- see cua.agent.usage.
+        trace.usage = [asdict(r) for r in decider.usage_log]
         if trace_path:
             trace.save(trace_path)
 
@@ -180,6 +186,56 @@ def run_discovery(
             decision = decider.respond(decision.tool_use_id, result_dict)
     finally:
         browser.close()
+
+
+def run_task(
+    goal: str,
+    known_targets: dict[str, str] | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    max_steps: int = DEFAULT_MAX_STEPS,
+    headless: bool = True,
+    output_dir: str | None = None,
+    bridge: EscalationBridge | None = None,
+    interactive: bool = True,
+    on_bridge_ready: Callable[[EscalationBridge], None] | None = None,
+) -> RunResult:
+    """Goal-only entry point: no ``--target`` required. Resolves which site
+    to use via ``cua.agent.router.route_target`` *before* any browser or
+    allowlist exists -- see router.py's module docstring for why that
+    ordering is what keeps the allowlist's "one locked origin for the whole
+    run" guarantee intact even though the origin is now chosen by the model
+    rather than a human. ``known_targets`` maps a short description to a
+    base URL (e.g. the CU Servicing Console); omit it to always resolve via
+    web search. ``username``/``password`` default to ``None`` -- a routed
+    external site is assumed to need no login unless you supply one (e.g.
+    for a known local target that does)."""
+    routing = route_target(goal, known_targets)
+    parsed = urlparse(routing.url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    start_path = parsed.path or "/"
+
+    result = run_discovery(
+        goal=goal,
+        base_url=base_url,
+        start_path=start_path,
+        username=username,
+        password=password,
+        max_steps=max_steps,
+        headless=headless,
+        output_dir=output_dir,
+        bridge=bridge,
+        interactive=interactive,
+        on_bridge_ready=on_bridge_ready,
+    )
+    result.trace.routing = {"url": routing.url, "reasoning": routing.reasoning, "source": routing.source}
+    # Routing's own API calls happened before run_discovery's trace existed
+    # -- prepend them so this run's trace.usage covers the whole thing, not
+    # just the discovery half.
+    result.trace.usage = routing.usage + result.trace.usage
+    if output_dir:
+        result.trace.save(os.path.join(output_dir, "trace.json"))
+    return result
 
 
 def _handle_human_help(
